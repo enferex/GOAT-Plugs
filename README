@@ -1,0 +1,6 @@
+== GOAT-Plugs: GCC Obfuscation Augmentation Tools ==
+GOAT-Plugs is a set of GCC plugins which aid in understanding GCC and can be
+used for obfuscating input programs.
+
+== Contact ==
+mattdavis9@gmail.com
