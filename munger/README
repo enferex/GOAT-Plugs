@@ -1,0 +1,56 @@
+GOAT-Plugs: munger plugin
+
+== About ==
+This plugin obfuscates a binary by storing all readonly strings as encoded
+values.  This prevents/deters some simple forensics measures where someone might
+inspect the binary for hard-coded strings.  Usually this can be done via
+"strings".  Now, with this plugin, the value in the binary is not readable, as
+it is encoded.  At runtime, the binary will automatically decode the value and
+use it.  You write code as you normally would and this plugin does all the work.
+
+Example:
+    printf("Somewaycool shell code");
+ 
+Your Binary would have that string stored as "gibberish" but at runtime the
+"gibberish" is decoded and returned as a proper value.
+
+This plugin works by walking each statement in the input source code, after gcc
+has converted it to SSA and presents us with a GIMPLE representation for each
+function.
+
+If we encounter a value that is stored in the readonly section that is a string,
+we create a global variable for that readonly constant.  This global is emitted
+into the resulting binary.  We then, before the statement that would use the
+readonly value, create an assignment to the global variable.
+
+In the binary we store the encoded value, and at runtime we resolve this encoded
+value, by creating a global variable (mentioned above) setting that global only
+once in the program, and we pass that global to any routine that uses the
+readonly.
+
+NOTE: The current key is -1 and the input is xor'd with this at compile time to
+encode the data, and xor'd again with that value (at runtime) to decode it.  Of
+course, in the future I would like to add the ability to pass a user-specified
+key.
+
+[BEFORE TRANSFORMATION]
+    ... code ...
+    some_function(use_a_readonly_string);
+    ... code ...
+
+[AFTER TRANSFORMATION]
+    ... code ...
+    GLOBAL_FOR_READONLY_VARIABLE = decode(use_readonly_string);
+    some_function(GLOBAL_FOR_READONLY_VARIABLE);
+    ... code ...
+
+decode() looks like this:
+     IF READONLY HAS BEEN DECODED ALREADY RETURN THAT
+     ELSE ALLOCATE MEMORY TO GLOBAL AND DECODE READONLY
+ 
+== Example ==
+gcc -fplugin=./munger.so test.c
+
+== Contact ==
+Matt Davis (enferex)
+mattdavis9@gmail.com
