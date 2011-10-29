@@ -1,0 +1,47 @@
+GOAT-Plugs: hatch plugin
+
+== About ==
+This is an example plugin that inserts a function, which further calls "system" on
+the executing machine.  The system call spawns a netcat socket listening on port
+666 and upon connection spawns an xterm session.  Also, at runtime, the compiler
+also executes this code.  This is an illusory example to show some potential
+dangers of plugins.  Never run this plugin in an unsafe environment.  Make sure
+you know what you are doing, or just modify the system call command to do
+something less security violating :-)
+
+hatch_builtins.o is an object file that should be linked with code compiled when
+using the hatch plugin.  This code presents a function that, when called, will
+spawn a netcat socket on port 666.
+
+These are just examples.  Hack-up hatch with you're own creativity.
+
+== Examples ==
+Here is a theoretical example, please be cautious, as stated above.
+Start up two terminals.
+
+Terminal one:
+Login as root or sudo and compile test.c:
+gcc -fplugin=./hatch.so test.c -o test hatch_builtins.o
+
+Do NOT run the resulting binary, 'test'.  Instead, this example is demonstrating
+one reason why compiling as root can be dangerous.  The above will now have a
+root netcat socket listening on port 666.  When connected a xterm will be
+spawned.
+
+Terminal two:
+Connect to the socket created at compile time:
+nc localhost 666
+
+Close the two terminals, and we can move on to the second example.  Which is
+similar as the one above, but we now just execute the comprimised binary we just
+created, 'test.' In one terminal, execute 'test.'  And in a second terminal,
+connect to the socket it spawns:
+nc localhost 666
+
+If nothing happens, 'test' should probably be run as root, and/or you never
+closed the session created  in example one, you might have a "socket
+already exists" error.
+    
+== Contact ==
+Matt Davis (enferex)
+mattdavis9@gmail.com
