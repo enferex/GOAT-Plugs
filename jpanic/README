@@ -1,0 +1,36 @@
+GOAT-Plug: jpanic plugin
+
+== About ==
+Much thanks goes to the junk-instruction guru JPanic, and all of his
+consultation and ideas while working on this.
+
+This plugin generates junk instructions and junk functions at compile time and
+then inserts them throughout the program being compiled.  Junk is considered
+no-ops such as:
+    mov rax, rax
+
+Such junk does nothing except spend a few cycles and help avoid malware detection,
+since multiple variants (each compiled instance) of the same program can have
+different junk in them, thus a different hash value.  The compiler even if
+optimization is turned off, will try to remove this junk.  So, we create a
+global variable that references junk data, forcing the compiler into keeping
+trash around.
+
+== Using ==
+One should be specified at runtime:
+    -fplugin-arg-jpanic-maxjunk=<num>
+    This argument will insert, at most, the user defined value number of junk
+    instructions and functions at runtime.  The junk created, as mentioned
+    above, is chosen pseudo-randomly at runtime.  'maxjunk' does not guarantee
+    that instructions will be input at compile time.  The calls are inserted
+    randomly, and at most 'maxjunk' will be added.  Calls are inserted after
+    function calls or assignments in the input program.
+
+== Example ==
+gcc -fplugin=./jpanic.so \
+    -fplugin-arg-jpanic-maxjunk=1000 \
+    test.c
+
+== Contact ==
+Matt Davis (enferex)
+mattdavis9@gmail.com
