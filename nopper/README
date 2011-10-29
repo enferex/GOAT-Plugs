@@ -1,0 +1,23 @@
+GOAT-Plugs: nopper plugin
+
+== About ==
+This plugin generates no-ops and places them pseudo-randomly, at compile time,
+throughout the program.  This is primarily a simple demo plugin but can aid in
+obfuscating the signature of a binary.  The no-op is not 0x90 or NOP, rather it
+is a junk instruction, mov eax eax.  This is less obvious to detect than NOP,
+but is still pretty obvious.
+
+== Using ==
+One value should be specified at runtime:
+    -fplugin-arg-nopper-numnops=<num>
+    This argument specifies how many NOPs to toss in pseudo-randomly between
+    statements of the input program.
+    
+== Example ==
+gcc -fplugin=./nopper.so \
+    -fplugin-arg-nopper-numnops=100 \
+    test.c
+
+== Contact ==
+Matt Davis (enferex)
+mattdavis9@gmail.com
