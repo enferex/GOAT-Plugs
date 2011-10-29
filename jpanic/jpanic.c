@@ -314,7 +314,9 @@ static unsigned int jpanic_exec(void)
             --max_junk;
         }
 
-   debug_function(cfun->decl, 0); 
+#ifdef GOAT_DEBUG
+    debug_function(cfun->decl, 0); 
+#endif
 
     return 0;
 }
