@@ -1,0 +1,45 @@
+GOAT-Plug: slimer plugin
+
+== About ==
+Who ya gonna call?
+
+This plugin generates junk functions at compile time and then calls them
+non-deterministically at runtime.  The "random" value used to decide which
+function to call at runtime is based on time().  There is no trampoline, instead
+code is generated and emitted into the input source file at compile time.
+
+This plugin inserts a function in main() to set things up.  In other words, all
+of the junk functions addresses are added to an array at runtime.  The plugin
+adds code at compile which will use this array to get a random junk function to
+call at runtime.
+
+slimer_builtins.c contains helper functions to aid the choosing of functions at
+runtime.  Therefore, slimer_builtins.o must be linked with the binary that is
+to be compiled.
+
+== Using ==
+Two values must be specified at runtime:
+    -fplugin-arg-slimer-numfuncs=<num>
+    This argument creates the user defined value number of junk functions which
+    will be created into the binary.
+
+    -fplugin-arg-slimer-maxcalls=<num>
+    This argument will call, at most, the user defined value number of junk
+    functions at runtime.  The function called, as mentioned above, is chosen
+    pseudo-randomly at runtime.  'maxcalls' does not guarantee that function
+    calls will be input at compile time.  The calls are inserted randomly, and
+    at most 'maxcalls' will be added.  Calls are inserted after function calls
+    or assignments in the input program.
+
+== Notes ==
+* This plugin should not be used for cross-compilation
+
+== Example ==
+gcc -fplugin=./slimer.so \
+    -fplugin-arg-slimer-numfuncs=3 \
+    -fplugin-arg-slimer-maxcalls=40 \
+    test.c slimer_builtins.o
+
+== Contact ==
+Matt Davis (enferex)
+mattdavis9@gmail.com
