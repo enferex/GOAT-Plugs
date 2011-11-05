@@ -30,6 +30,15 @@ the program.
 slimer -- Inserts junk functions and calls them non-deterministically at
 runtime.
 
+== Install ==
+There is no install.  So I was doing the autotools deal, but figured that was
+really just overkill.  If you are using these plugins, chances are you know to
+use gcc, and chances are you have gcc.  Just make sure you have a plugin enabled
+gcc build: `gcc -v | grep "--enable-plugin"`
+
+To build things, simply run `make` from the directory of the plugin you want to
+build.  The resulting '.so' file is the plugin, enjoy its deliciousness.
+
 == Contact ==
 Matt Davis (enferex)
 mattdavis9@gmail.com
