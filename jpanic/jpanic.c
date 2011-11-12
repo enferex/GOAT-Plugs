@@ -116,7 +116,6 @@ static gimple build_junk_assign(void)
 }
 
 
-
 /* lhs = rhs1 OP rhs2 */
 static gimple build_junk_math(junk_type_e op)
 {
