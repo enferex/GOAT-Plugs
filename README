@@ -30,6 +30,9 @@ the program.
 slimer -- Inserts junk functions and calls them non-deterministically at
 runtime.
 
+gdbinit -- This file is to be renamed to '.gdbinit' and placed into the
+directory where gdb is being executed from.  This is merely to ease debugging.
+
 == Install ==
 There is no install.  So I was doing the autotools deal, but figured that was
 really just overkill.  If you are using these plugins, chances are you know to
