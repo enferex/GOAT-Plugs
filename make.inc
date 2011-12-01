@@ -13,3 +13,6 @@ test: clean $(PLUGIN) test.c
 clean:
 	rm -fv $(PLUGIN) *.o test
 
+debug:
+	exec gdb --args /home/enferex/docs/edu/go/dev/gcc-obj/gcc/cc1 \
+        -fplugin=./munger.so test.c
