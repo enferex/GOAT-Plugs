@@ -231,7 +231,6 @@ static tree insert_decode_bn(gimple stmt, tree lhs, tree arg)
     gimple_call_set_lhs(call, new_lhs);
     gsi = gsi_for_stmt(stmt);
     gsi_insert_before(&gsi, call, GSI_NEW_STMT);
-
     return new_lhs;
 }
 
