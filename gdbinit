@@ -1,7 +1,3 @@
-define bk
-break build_known_call_with_regions
-end
-
 define pg
 call debug_generic_stmt($arg0)
 end
