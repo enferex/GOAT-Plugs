@@ -135,7 +135,7 @@ static tree add_unique(tree node)
     TREE_STATIC(dec_node) = 1;
     varpool_finalize_decl(dec_node);
     varpool_mark_needed_node(varpool_node(dec_node));
-   
+
     /* Remember the node */
     ed = xmalloc(sizeof(encdec_t));
     ed->enc_node = node;
@@ -191,6 +191,9 @@ static tree get_str_cst(tree node)
     else if (TREE_CODE(node) == ADDR_EXPR)
       str = TREE_OPERAND(str, 0);
 
+    if (!str)
+      return NULL_TREE;
+
     /* We only deal with readonly stuff */
     if (!TYPE_READONLY(str) && (TREE_CODE(str) != ARRAY_REF))
       return NULL_TREE;
@@ -205,8 +208,10 @@ static tree get_str_cst(tree node)
 }
 
 
-/* Emit code which will call __decode() */
-static void insert_decode_bn(gimple stmt, tree lhs, tree arg)
+/* Emit code which will call __decode()
+ * Returns the lhs variable this function creates
+ */
+static tree insert_decode_bn(gimple stmt, tree lhs, tree arg)
 {
     gimple call;
     gimple_stmt_iterator gsi;
@@ -218,10 +223,14 @@ static void insert_decode_bn(gimple stmt, tree lhs, tree arg)
     size_node = build_int_cstu(uint32_type_node, TREE_STRING_LENGTH(str));
 
     /* If lhs has already been decoded, do nothing */
+    tree rhs = create_tmp_var(ptr_type_node, "FOO");
+    rhs = make_ssa_name(rhs, stmt);
+
     call = gimple_build_call(test_decode_fndecl, 3, lhs, arg, size_node);;
-    gimple_call_set_lhs(call, lhs);
+    gimple_call_set_lhs(call, rhs);
     gsi = gsi_for_stmt(stmt);
     gsi_insert_before(&gsi, call, GSI_NEW_STMT);
+    return rhs;
 }
 
 
@@ -242,7 +251,9 @@ static void encode(tree node)
 static void process_readonlys(gimple stmt)
 {
     int i;
-    tree op, decoded_op, orig;
+    gimple assign_global;
+    gimple_stmt_iterator gsi;
+    tree op, decoded_op, orig, decoded_var, lhs;
 
     /* For each operand in stmt */
     for (i=0; i<gimple_num_ops(stmt); ++i)
@@ -265,9 +276,19 @@ static void process_readonlys(gimple stmt)
          */
         decoded_op = add_unique(orig);
 
+        /* Create a ssa instance of a variable that we put the global into */
+        decoded_var = create_tmp_reg(ptr_type_node, "FOO");
+        decoded_var = make_ssa_name(decoded_var, stmt);
+        DECL_ARTIFICIAL(decoded_var) = 1;
+
+        /* Assign the global to the ssa name instance */
+        assign_global = gimple_build_assign_stat(decoded_var, decoded_op);
+        gsi = gsi_for_stmt(stmt);
+        gsi_insert_before(&gsi, assign_global, GSI_NEW_STMT);
+
         /* Set the global which points to the  and forget it... (thanks Ron Popeil) */
-        insert_decode_bn(stmt, decoded_op, orig);
-        gimple_set_op(stmt, i, decoded_op);
+        lhs = insert_decode_bn(stmt, decoded_var, orig);
+        gimple_set_op(stmt, i, lhs);
     }
 }
 
