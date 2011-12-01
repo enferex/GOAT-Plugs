@@ -98,7 +98,7 @@ int plugin_is_GPL_compatible = 1;
 /* Help info about the plugin if one were to use gcc --version --help */
 static struct plugin_info munger_info =
 {
-    .version = "0.1",
+    .version = "0.2",
     .help = "Encodes readonly constant string data at compile time.  The string "
             "is then decoded automatically at runtime."
 };
