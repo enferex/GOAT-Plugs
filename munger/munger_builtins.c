@@ -21,7 +21,7 @@
  * along with GOAT-Plugs.  If not, see <http://www.gnu.org/licenses/>.
  *****************************************************************************/
 
-
+extern "C" {
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,11 +30,11 @@
 /* Runtime function that decodes the data */
 void *__decode(void *decoded, void *orig, unsigned int length)
 {
-    int i;
+    unsigned i;
 
     /* If we have already decoded this.... do nothing */
     if (decoded)
-      return decoded;
+      return (char *)decoded;
 
     decoded = calloc(1, length);
 
@@ -43,3 +43,4 @@ void *__decode(void *decoded, void *orig, unsigned int length)
     
     return decoded;
 }
+} /* extern C */

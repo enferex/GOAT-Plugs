@@ -5,7 +5,7 @@
  * 
  * Munger plugin - Simple readonly data obfuscation.
  *
- * Copyright (C) 2011 Matt Davis (enferex) of 757Labs
+ * Copyright (C) 2011, 2012 Matt Davis (enferex) of 757Labs
  * (www.757Labs.org)
  *
  * munger.c is part of the GOAT-Plugs GCC plugin set.
@@ -104,13 +104,6 @@ static struct plugin_info munger_info =
 };
 
 
-/* Ensure the gcc version will work with our plugin */
-static struct plugin_gcc_version munger_ver =
-{
-    .basever = "4.6",
-};
-
-
 /* We don't need to run any tests before we execute our plugin pass */
 static bool munger_gate(void)
 {
@@ -132,12 +125,14 @@ static tree add_unique(tree node)
     /* Create a global variable, thanks to "init_ic_make_global_vars()" */
     dec_node = build_decl(UNKNOWN_LOCATION, VAR_DECL, NULL_TREE, ptr_type_node);
     DECL_NAME(dec_node) = create_tmp_var_name("FOO");
+    DECL_ARTIFICIAL(dec_node) = 1;
     TREE_STATIC(dec_node) = 1;
+    create_var_ann(dec_node);
     varpool_finalize_decl(dec_node);
     varpool_mark_needed_node(varpool_node(dec_node));
 
     /* Remember the node */
-    ed = xmalloc(sizeof(encdec_t));
+    ed = (encdec_t)xmalloc(sizeof(struct _encdec_d));
     ed->enc_node = node;
     ed->dec_node = dec_node;
     VEC_safe_push(encdec_t, gc, readonlyz, ed);
@@ -215,23 +210,24 @@ static tree insert_decode_bn(gimple stmt, tree lhs, tree arg)
 {
     gimple call;
     gimple_stmt_iterator gsi;
-    tree str, size_node, new_lhs;
+    tree str, size_node, decl, ssa;
 
-    str = get_str_cst(arg);
-    
     /* Build a node to hold the size */
+    str = get_str_cst(arg);
     size_node = build_int_cstu(uint32_type_node, TREE_STRING_LENGTH(str));
+    
+    /* Build the call DECODED = __decode() */
+    call = gimple_build_call(test_decode_fndecl, 3, lhs, arg, size_node);;
 
     /* If lhs has already been decoded, do nothing */
-    new_lhs = create_tmp_var(ptr_type_node, "FOO");
-    new_lhs = make_ssa_name(new_lhs, stmt);
+    decl = create_tmp_var(TREE_TYPE(TREE_TYPE(test_decode_fndecl)), "DECODED");
+    ssa = make_ssa_name(decl, call);
+    gimple_call_set_lhs(call, ssa);
 
-    /* Insert the code for the 'new_lhs = decode();' statement */
-    call = gimple_build_call(test_decode_fndecl, 3, lhs, arg, size_node);;
-    gimple_call_set_lhs(call, new_lhs);
+    /* Insert the code for the 'DECODED = __decode();' statement */
     gsi = gsi_for_stmt(stmt);
     gsi_insert_before(&gsi, call, GSI_NEW_STMT);
-    return new_lhs;
+    return ssa;
 }
 
 
@@ -251,7 +247,7 @@ static void encode(tree node)
 /* Locate read only string constants */
 static void process_readonlys(gimple stmt)
 {
-    int i;
+    unsigned i;
     gimple assign_global;
     gimple_stmt_iterator gsi;
     tree op, decoded_op, orig, decoded_var, lhs;
@@ -278,9 +274,8 @@ static void process_readonlys(gimple stmt)
         decoded_op = add_unique(orig);
 
         /* Create a ssa instance of a variable that we put the global into */
-        decoded_var = create_tmp_reg(ptr_type_node, "FOO");
+        decoded_var = create_tmp_var(ptr_type_node, "BAR");
         decoded_var = make_ssa_name(decoded_var, stmt);
-        DECL_ARTIFICIAL(decoded_var) = 1;
 
         /* Assign the global to the ssa name instance */
         assign_global = gimple_build_assign_stat(decoded_var, decoded_op);
@@ -290,6 +285,7 @@ static void process_readonlys(gimple stmt)
         /* Set the global which points to the  and forget it... (thanks Ron Popeil) */
         lhs = insert_decode_bn(stmt, decoded_var, orig);
         gimple_set_op(stmt, i, lhs);
+        update_stmt(stmt);
     }
 }
 
@@ -317,14 +313,12 @@ static unsigned int munger_exec(void)
 }
 
 
-static struct gimple_opt_pass munger_pass = 
+/* Permit gcc version 4.6 and 4.7 */
+static inline bool munger_version_check(const struct plugin_gcc_version *ver)
 {
-    .pass.type = GIMPLE_PASS,
-    .pass.name = "munger", /* For use in the dump file          */
-    .pass.gate = munger_gate,
-    .pass.execute = munger_exec, /* Your pass handler/callback */
-    .pass.todo_flags_finish = TODO_update_ssa|TODO_verify_ssa|TODO_cleanup_cfg,
-};
+    return ((strncmp(ver->basever, "4.6", strlen("4.6")) == 0) ||
+            (strncmp(ver->basever, "4.7", strlen("4.7")) == 0));
+}
 
 
 /* Return 0 on success or error code on failure */
@@ -332,9 +326,18 @@ int plugin_init(struct plugin_name_args   *info,  /* Argument info  */
                 struct plugin_gcc_version *ver)   /* Version of GCC */
 {
     struct register_pass_info pass;
+    static struct gimple_opt_pass munger_pass;
 
-     if (strncmp(ver->basever, munger_ver.basever, strlen("4.6")))
+     if (!munger_version_check(ver))
        return -1; /* Incorrect version of gcc */
+
+    /* Initalize the GIMPLE pass info */
+    memset(&munger_pass, 0, sizeof(munger_pass));
+    munger_pass.pass.type = GIMPLE_PASS,
+    munger_pass.pass.name = "munger", /* For use in the dump file          */
+    munger_pass.pass.gate = munger_gate,
+    munger_pass.pass.execute = munger_exec, /* Your pass handler/callback */
+    munger_pass.pass.todo_flags_finish = TODO_update_ssa|TODO_verify_ssa|TODO_cleanup_cfg,
 
     /* Get called after gcc has produced the SSA representation of the program.
      * After the first SSA pass.
