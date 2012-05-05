@@ -74,6 +74,7 @@
 #include <gcc-plugin.h>
 #include <gimple.h>
 #include <tree.h>
+#include <tree-dump.h>
 #include <tree-flow.h>
 #include <tree-pass.h>
 #include <vec.h>
@@ -84,8 +85,9 @@
 typedef struct _encdec_d *encdec_t;
 struct _encdec_d
 {
-    tree enc_node;
-    tree dec_node;
+    tree enc_node; /* SSA name                          */
+    tree strcst;   /* String const of the original node */
+    tree dec_node; /* Global for this node              */
 };
 DEF_VEC_P(encdec_t);
 DEF_VEC_ALLOC_P(encdec_t, gc);
@@ -109,36 +111,6 @@ static struct plugin_info munger_info =
 static bool munger_gate(void)
 {
     return true;
-}
-
-
-/* Add 'node' to our vec of readonly vars */
-static tree add_unique(tree node)
-{
-    unsigned ii;
-    tree dec_node;
-    encdec_t ed;
-
-    for (ii=0; VEC_iterate(encdec_t, readonlyz, ii, ed); ++ii)
-      if (ed->enc_node == node)
-        return ed->dec_node;
-
-    /* Create a global variable, thanks to "init_ic_make_global_vars()" */
-    dec_node = build_decl(UNKNOWN_LOCATION, VAR_DECL, NULL_TREE, ptr_type_node);
-    DECL_NAME(dec_node) = create_tmp_var_name("FOO");
-    DECL_ARTIFICIAL(dec_node) = 1;
-    TREE_STATIC(dec_node) = 1;
-    create_var_ann(dec_node);
-    varpool_finalize_decl(dec_node);
-    varpool_mark_needed_node(varpool_node(dec_node));
-
-    /* Remember the node */
-    ed = (encdec_t)xmalloc(sizeof(struct _encdec_d));
-    ed->enc_node = node;
-    ed->dec_node = dec_node;
-    VEC_safe_push(encdec_t, gc, readonlyz, ed);
-
-    return dec_node;
 }
 
 
@@ -204,6 +176,37 @@ static tree get_str_cst(tree node)
 }
 
 
+/* Add 'node' to our vec of readonly vars */
+static tree add_unique(tree node)
+{
+    unsigned ii;
+    tree dec_node;
+    encdec_t ed;
+
+    for (ii=0; VEC_iterate(encdec_t, readonlyz, ii, ed); ++ii)
+      if (ed->enc_node == node)
+        return ed->dec_node;
+
+    /* Create a global variable, thanks to "init_ic_make_global_vars()" */
+    dec_node = build_decl(UNKNOWN_LOCATION, VAR_DECL, NULL_TREE, ptr_type_node);
+    DECL_NAME(dec_node) = create_tmp_var_name("FOO");
+    DECL_ARTIFICIAL(dec_node) = 1;
+    TREE_STATIC(dec_node) = 1;
+    create_var_ann(dec_node);
+    varpool_finalize_decl(dec_node);
+    varpool_mark_needed_node(varpool_node(dec_node));
+
+    /* Remember the node */
+    ed = (encdec_t)xmalloc(sizeof(struct _encdec_d));
+    ed->enc_node = node;
+    ed->dec_node = dec_node;
+    ed->strcst = get_str_cst(node);
+    VEC_safe_push(encdec_t, gc, readonlyz, ed);
+
+    return dec_node;
+}
+
+
 /* Emit code which will call __decode()
  * Returns the lhs variable this function creates
  */
@@ -238,6 +241,12 @@ static tree insert_decode_bn(gimple stmt, tree lhs, tree arg)
 static void encode(tree node)
 {
     int i;
+    encdec_t ed;
+
+    /* Do no encode the data if we already have */
+    for (i=0; VEC_iterate(encdec_t, readonlyz, i, ed); ++i)
+      if (ed->strcst == node)
+        return;
 
     for (i=0; i<TREE_STRING_LENGTH(node); ++i)
       ((char *)TREE_STRING_POINTER(node))[i] =
@@ -320,9 +329,13 @@ static inline bool munger_version_check(const struct plugin_gcc_version *ver)
     if (strncmp(ver->basever, "4.6", strlen("4.6")) == 0)
       return true;
 
+#ifdef GOAT_DEBUG
+    return true;
+#else
     error("[GOAT-plugins] The munger plugin is only available "
           "for gcc 4.6.x series");
     return false;
+#endif
 }
 
 
