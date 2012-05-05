@@ -21,7 +21,10 @@
  * along with GOAT-Plugs.  If not, see <http://www.gnu.org/licenses/>.
  *****************************************************************************/
 
+#ifdef __cplusplus
 extern "C" {
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,4 +46,7 @@ void *__decode(void *decoded, void *orig, unsigned int length)
     
     return decoded;
 }
+
+#ifdef __cplusplus
 } /* extern C */
+#endif
