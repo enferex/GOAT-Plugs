@@ -189,7 +189,7 @@ static tree add_unique(tree node)
 
     /* Create a global variable, thanks to "init_ic_make_global_vars()" */
     dec_node = build_decl(UNKNOWN_LOCATION, VAR_DECL, NULL_TREE, ptr_type_node);
-    DECL_NAME(dec_node) = create_tmp_var_name("FOO");
+    DECL_NAME(dec_node) = create_tmp_var_name("MUNGER_GLOBAL");
     DECL_ARTIFICIAL(dec_node) = 1;
     TREE_STATIC(dec_node) = 1;
     create_var_ann(dec_node);
@@ -208,36 +208,48 @@ static tree add_unique(tree node)
 
 
 /* Emit code which will call __decode()
- * Returns the lhs variable this function creates
+ * Returns the lhs variable this function creates (decoded data).
+ * This also sets the global
  */
 static tree insert_decode_bn(gimple stmt, tree lhs, tree arg)
 {
-    gimple call;
+    unsigned i;
+    gimple call, assign_to_global;
     gimple_stmt_iterator gsi;
+    encdec_t ed;
     tree str, size_node, decl, ssa;
 
     /* Build a node to hold the size */
     str = get_str_cst(arg);
     size_node = build_int_cstu(uint32_type_node, TREE_STRING_LENGTH(str));
-    
+
     /* Build the call DECODED = __decode() */
     call = gimple_build_call(test_decode_fndecl, 3, lhs, arg, size_node);;
 
     /* If lhs has already been decoded, do nothing */
-    decl = create_tmp_var(TREE_TYPE(TREE_TYPE(test_decode_fndecl)), "DECODED");
+    decl = create_tmp_var(TREE_TYPE(TREE_TYPE(test_decode_fndecl)), "MUNGER_TMP");
     ssa = make_ssa_name(decl, call);
     gimple_call_set_lhs(call, ssa);
 
     /* Insert the code for the 'DECODED = __decode();' statement */
     gsi = gsi_for_stmt(stmt);
     gsi_insert_before(&gsi, call, GSI_NEW_STMT);
+
+    /* Get the global associated to the strcst */
+    for (i=0; VEC_iterate(encdec_t, readonlyz, i, ed); ++i)
+      if (ed->strcst == str)
+        break;
+
+    /* Set the global to the decoded value (to avoid decoding multiple times) */
+    assign_to_global = gimple_build_assign(ed->dec_node, ssa);
+    gsi_insert_after(&gsi, assign_to_global, GSI_NEW_STMT);
+
+    /* Return the temp variable which has the decoded value in it */
     return ssa;
 }
 
 
-/* Simple algorithm to encode a readonly string: xor with -1 (thanks Robert
- * Morris).
- */
+/* Algo to encode a readonly string: xor with -1 (thanks Robert Morris) */
 static void encode(tree node)
 {
     int i;
@@ -284,7 +296,7 @@ static void process_readonlys(gimple stmt)
         decoded_op = add_unique(orig);
 
         /* Create a ssa instance of a variable that we put the global into */
-        decoded_var = create_tmp_var(ptr_type_node, "BAR");
+        decoded_var = create_tmp_var(ptr_type_node, "MUNGER_ARG");
         decoded_var = make_ssa_name(decoded_var, stmt);
 
         /* Assign the global to the ssa name instance */
@@ -292,7 +304,7 @@ static void process_readonlys(gimple stmt)
         gsi = gsi_for_stmt(stmt);
         gsi_insert_before(&gsi, assign_global, GSI_NEW_STMT);
 
-        /* Set the global which points to the  and forget it... (thanks Ron Popeil) */
+        /* Set the global which points to the decoded  data and forget it... */
         lhs = insert_decode_bn(stmt, decoded_var, orig);
         gimple_set_op(stmt, i, lhs);
         update_stmt(stmt);
