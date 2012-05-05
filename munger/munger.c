@@ -77,6 +77,7 @@
 #include <tree-flow.h>
 #include <tree-pass.h>
 #include <vec.h>
+#include <diagnostic.h>
 
 
 /* Store all readonlys we encounter */
@@ -316,7 +317,12 @@ static unsigned int munger_exec(void)
 /* Permit only gcc version 4.6 */
 static inline bool munger_version_check(const struct plugin_gcc_version *ver)
 {
-    return (strncmp(ver->basever, "4.6", strlen("4.6")) == 0);
+    if (strncmp(ver->basever, "4.6", strlen("4.6")) == 0)
+      return true;
+
+    error("[GOAT-plugins] The munger plugin is only available "
+          "for gcc 4.6.x series");
+    return false;
 }
 
 
