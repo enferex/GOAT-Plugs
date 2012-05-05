@@ -313,11 +313,10 @@ static unsigned int munger_exec(void)
 }
 
 
-/* Permit gcc version 4.6 and 4.7 */
+/* Permit only gcc version 4.6 */
 static inline bool munger_version_check(const struct plugin_gcc_version *ver)
 {
-    return ((strncmp(ver->basever, "4.6", strlen("4.6")) == 0) ||
-            (strncmp(ver->basever, "4.7", strlen("4.7")) == 0));
+    return (strncmp(ver->basever, "4.6", strlen("4.6")) == 0);
 }
 
 
