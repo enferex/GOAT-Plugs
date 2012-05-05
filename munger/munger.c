@@ -274,9 +274,8 @@ static void process_readonlys(gimple stmt)
         decoded_op = add_unique(orig);
 
         /* Create a ssa instance of a variable that we put the global into */
-        decoded_var = create_tmp_reg(ptr_type_node, "FOO");
+        decoded_var = create_tmp_var(ptr_type_node, "BAR");
         decoded_var = make_ssa_name(decoded_var, stmt);
-        DECL_ARTIFICIAL(decoded_var) = 1;
 
         /* Assign the global to the ssa name instance */
         assign_global = gimple_build_assign_stat(decoded_var, decoded_op);
