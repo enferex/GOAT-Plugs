@@ -85,7 +85,6 @@
 typedef struct _encdec_d *encdec_t;
 struct _encdec_d
 {
-    tree enc_node; /* SSA name                          */
     tree strcst;   /* String const of the original node */
     tree dec_node; /* Global for this node              */
 };
@@ -184,7 +183,7 @@ static tree add_unique(tree node)
     encdec_t ed;
 
     for (ii=0; VEC_iterate(encdec_t, readonlyz, ii, ed); ++ii)
-      if (ed->enc_node == node)
+      if (ed->strcst == node)
         return ed->dec_node;
 
     /* Create a global variable, thanks to "init_ic_make_global_vars()" */
@@ -198,7 +197,6 @@ static tree add_unique(tree node)
 
     /* Remember the node */
     ed = (encdec_t)xmalloc(sizeof(struct _encdec_d));
-    ed->enc_node = node;
     ed->dec_node = dec_node;
     ed->strcst = get_str_cst(node);
     VEC_safe_push(encdec_t, gc, readonlyz, ed);
@@ -214,10 +212,10 @@ static tree add_unique(tree node)
 static tree insert_decode_bn(gimple stmt, tree lhs, tree arg)
 {
     unsigned i;
-    gimple call, assign_to_global;
+    gimple call;
     gimple_stmt_iterator gsi;
     encdec_t ed;
-    tree str, size_node, decl, ssa;
+    tree str, size_node;
 
     /* Build a node to hold the size */
     str = get_str_cst(arg);
@@ -225,11 +223,6 @@ static tree insert_decode_bn(gimple stmt, tree lhs, tree arg)
 
     /* Build the call DECODED = __decode() */
     call = gimple_build_call(test_decode_fndecl, 3, lhs, arg, size_node);;
-
-    /* If lhs has already been decoded, do nothing */
-    decl = create_tmp_var(TREE_TYPE(TREE_TYPE(test_decode_fndecl)), "MUNGER_TMP");
-    ssa = make_ssa_name(decl, call);
-    gimple_call_set_lhs(call, ssa);
 
     /* Insert the code for the 'DECODED = __decode();' statement */
     gsi = gsi_for_stmt(stmt);
@@ -241,11 +234,10 @@ static tree insert_decode_bn(gimple stmt, tree lhs, tree arg)
         break;
 
     /* Set the global to the decoded value (to avoid decoding multiple times) */
-    assign_to_global = gimple_build_assign(ed->dec_node, ssa);
-    gsi_insert_after(&gsi, assign_to_global, GSI_NEW_STMT);
+    gimple_call_set_lhs(call, ed->dec_node);
 
-    /* Return the temp variable which has the decoded value in it */
-    return ssa;
+    /* Return the tmp variable which has the decoded value in it */
+    return ed->dec_node;
 }
 
 
@@ -293,7 +285,7 @@ static void process_readonlys(gimple stmt)
         /* Only store this guy once and return the value we emit into the binary
          * as the decoded version.
          */
-        decoded_op = add_unique(orig);
+        decoded_op = add_unique(op);
 
         /* Create a ssa instance of a variable that we put the global into */
         decoded_var = create_tmp_var(ptr_type_node, "MUNGER_ARG");
