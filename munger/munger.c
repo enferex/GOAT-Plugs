@@ -330,16 +330,14 @@ static unsigned int munger_exec(void)
 /* Permit only gcc version 4.6 */
 static inline bool munger_version_check(const struct plugin_gcc_version *ver)
 {
-    if (strncmp(ver->basever, "4.6", strlen("4.6")) == 0)
+    if ((strncmp(ver->basever, "4.6", strlen("4.6")) == 0) ||
+        (strncmp(ver->basever, "4.7", strlen("4.7")) == 0))
       return true;
 
-#ifdef GOAT_DEBUG
-    return true;
-#else
-    error("[GOAT-plugins] The munger plugin is only available "
-          "for gcc 4.6.x series");
+    error("[GOAT-plugs] The munger plugin is not supported for this version of "
+          "the compiler, try a 4.6.x or 4.7.x series");
+
     return false;
-#endif
 }
 
 
