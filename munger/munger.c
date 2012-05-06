@@ -334,7 +334,7 @@ static inline bool munger_version_check(const struct plugin_gcc_version *ver)
         (strncmp(ver->basever, "4.7", strlen("4.7")) == 0))
       return true;
 
-    error("[GOAT-plugs] The munger plugin is not supported for this version of "
+    error("[GOAT-Plugs] The munger plugin is not supported for this version of "
           "the compiler, try a 4.6.x or 4.7.x series");
 
     return false;
