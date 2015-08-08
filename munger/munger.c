@@ -5,7 +5,7 @@
  * 
  * Munger plugin - Simple readonly data obfuscation.
  *
- * Copyright (C) 2011, 2012 Matt Davis (enferex) of 757Labs
+ * Copyright (C) 2011, 2012, 2015 Matt Davis (enferex) of 757Labs
  * (www.757Labs.org)
  *
  * munger.c is part of the GOAT-Plugs GCC plugin set.
@@ -69,14 +69,14 @@
  *      ELSE ALLOCATE MEMORY TO GLOBAL AND DECODE READONLY
  */
 
-#include <stdio.h>
-#include <coretypes.h>
 #include <gcc-plugin.h>
-#include <gimple.h>
+#include <coretypes.h>
 #include <tree.h>
-#include <tree-dump.h>
 #include <tree-flow.h>
 #include <tree-pass.h>
+#include <function.h>
+#include <cgraph.h>
+#include <gimple.h>
 #include <vec.h>
 #include <diagnostic.h>
 
@@ -88,22 +88,11 @@ struct _encdec_d
     tree strcst;   /* String const of the original node */
     tree dec_node; /* Global for this node              */
 };
-DEF_VEC_P(encdec_t);
-DEF_VEC_ALLOC_P(encdec_t, gc);
-VEC(encdec_t,gc) *readonlyz;
+vec<encdec_t> readonlyz = vNULL;
 
 
 /* Required for the plugin to work */
 int plugin_is_GPL_compatible = 1;
-
-
-/* Help info about the plugin if one were to use gcc --version --help */
-static struct plugin_info munger_info =
-{
-    .version = "0.2",
-    .help = "Encodes readonly constant string data at compile time.  The string "
-            "is then decoded automatically at runtime."
-};
 
 
 /* We don't need to run any tests before we execute our plugin pass */
@@ -144,6 +133,7 @@ static tree get_str_cst(tree node)
     tree str;
 
     str = node;
+      debug_tree(str);
 
     /* Filter out types we are ignoring */
     if (TREE_CODE(node) == VAR_DECL)
@@ -170,8 +160,9 @@ static tree get_str_cst(tree node)
 
     if (TREE_CODE(str) != STRING_CST)
       return NULL_TREE;
-    else
+    else {
       return str;
+    }
 }
 
 
@@ -182,7 +173,7 @@ static tree add_unique(tree node)
     tree dec_node;
     encdec_t ed;
 
-    for (ii=0; VEC_iterate(encdec_t, readonlyz, ii, ed); ++ii)
+    FOR_EACH_VEC_ELT (readonlyz, ii, ed)
       if (ed->strcst == node)
         return ed->dec_node;
 
@@ -191,15 +182,13 @@ static tree add_unique(tree node)
     DECL_NAME(dec_node) = create_tmp_var_name("MUNGER_GLOBAL");
     DECL_ARTIFICIAL(dec_node) = 1;
     TREE_STATIC(dec_node) = 1;
-    create_var_ann(dec_node);
     varpool_finalize_decl(dec_node);
-    varpool_mark_needed_node(varpool_node(dec_node));
 
     /* Remember the node */
     ed = (encdec_t)xmalloc(sizeof(struct _encdec_d));
     ed->dec_node = dec_node;
     ed->strcst = get_str_cst(node);
-    VEC_safe_push(encdec_t, gc, readonlyz, ed);
+    readonlyz.safe_push(ed);
 
     return dec_node;
 }
@@ -211,7 +200,7 @@ static tree add_unique(tree node)
  */
 static tree insert_decode_bn(gimple stmt, tree lhs, tree arg)
 {
-    unsigned i;
+    unsigned ii;
     gimple call;
     gimple_stmt_iterator gsi;
     encdec_t ed;
@@ -229,7 +218,7 @@ static tree insert_decode_bn(gimple stmt, tree lhs, tree arg)
     gsi_insert_before(&gsi, call, GSI_NEW_STMT);
 
     /* Get the global associated to the strcst */
-    for (i=0; VEC_iterate(encdec_t, readonlyz, i, ed); ++i)
+    FOR_EACH_VEC_ELT(readonlyz, ii, ed)
       if (ed->strcst == str)
         break;
 
@@ -244,17 +233,17 @@ static tree insert_decode_bn(gimple stmt, tree lhs, tree arg)
 /* Algo to encode a readonly string: xor with -1 (thanks Robert Morris) */
 static void encode(tree node)
 {
-    int i;
+    int ii;
     encdec_t ed;
 
     /* Do no encode the data if we already have */
-    for (i=0; VEC_iterate(encdec_t, readonlyz, i, ed); ++i)
+    FOR_EACH_VEC_ELT(readonlyz, ii, ed)
       if (ed->strcst == node)
         return;
 
-    for (i=0; i<TREE_STRING_LENGTH(node); ++i)
-      ((char *)TREE_STRING_POINTER(node))[i] =
-        TREE_STRING_POINTER(node)[i] ^ -1;
+    for (ii=0; ii<TREE_STRING_LENGTH(node); ++ii)
+      ((char *)TREE_STRING_POINTER(node))[ii] =
+        TREE_STRING_POINTER(node)[ii] ^ -1;
 }
 
 
@@ -327,15 +316,14 @@ static unsigned int munger_exec(void)
 }
 
 
-/* Permit only gcc version 4.6 */
+/* Permit only gcc version 4.8 */
 static inline bool munger_version_check(const struct plugin_gcc_version *ver)
 {
-    if ((strncmp(ver->basever, "4.6", strlen("4.6")) == 0) ||
-        (strncmp(ver->basever, "4.7", strlen("4.7")) == 0))
+    if ((strncmp(ver->basever, "4.8", strlen("4.8")) == 0))
       return true;
 
     error("[GOAT-Plugs] The munger plugin is not supported for this version of "
-          "the compiler, try a 4.6.x or 4.7.x series");
+          "the compiler, try a 4.8.x series");
 
     return false;
 }
@@ -346,10 +334,17 @@ int plugin_init(struct plugin_name_args   *info,  /* Argument info  */
                 struct plugin_gcc_version *ver)   /* Version of GCC */
 {
     struct register_pass_info pass;
+    static struct plugin_info munger_info;
     static struct gimple_opt_pass munger_pass;
 
-     if (!munger_version_check(ver))
-       return -1; /* Incorrect version of gcc */
+    /* Version info */
+    munger_info.version = "0.3";
+    munger_info.help = "Encodes readonly constant string data at compile "
+                       "time.   The string is then decoded automatically "
+                       "at runtime.";
+
+    if (!munger_version_check(ver))
+      return -1; /* Incorrect version of gcc */
 
     /* Initalize the GIMPLE pass info */
     memset(&munger_pass, 0, sizeof(munger_pass));

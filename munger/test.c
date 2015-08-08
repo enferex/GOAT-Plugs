@@ -10,13 +10,14 @@ char fooX = 'X';
 
 static void test2(void)
 {
-    printf("Testing1!\n");
-    printf("Testing2!\n");
+    printf("Testing3!\n");
+    printf("Testing4!\n");
 }
 
 int main(void)
 {
     printf("Testing1!\n");
+    printf("Testing: %s %s %s %s\n", foo0, foo1, foo2, foo3);
     printf("Testing2!\n");
     test2();
 
