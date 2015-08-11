@@ -107,7 +107,7 @@ static unsigned int nopper_exec(void)
 {
     int i;
     static int nops_per_stmt = 0;
-    static bool counted_stmts = 0;
+    static int counted_stmts = 0;
     basic_block bb;
     gimple_stmt_iterator gsi;
 
