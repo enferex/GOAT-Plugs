@@ -39,7 +39,7 @@ int plugin_is_GPL_compatible = 1;
 /* Help info about the plugin if one were to use gcc's --version --help */
 static struct plugin_info nopper_info =
 {
-    .version = "0.1",
+    .version = "0.2",
     .help = "Inserts user-defined amount of nop instructions throughout the "
             ".text section of the binary.\n"
             "-fplugin-arg-nopper-numnops=<value>\n"
@@ -50,7 +50,7 @@ static struct plugin_info nopper_info =
 /* How we test to ensure the gcc version will work with our plugin */
 static struct plugin_gcc_version nopper_ver =
 {
-    .basever = "4.6",
+    .basever = "4.8",
 };
 
 
@@ -84,12 +84,12 @@ static int count_stmts(void)
     /* For each call graph node, for each function, for each bb in func, for
      * each stmt in bb
      */
-    for (node=cgraph_nodes; node; node=node->next)
+    FOR_EACH_FUNCTION(node)
     {
-        if (!(func = DECL_STRUCT_FUNCTION(node->decl)))
+        if (!(func = DECL_STRUCT_FUNCTION(node->symbol.decl)))
           continue;
 
-        FOR_EACH_BB_FN(bb, DECL_STRUCT_FUNCTION(node->decl))
+        FOR_EACH_BB_FN(bb, func)
           for (gsi=gsi_start_bb(bb); !gsi_end_p(gsi); gsi_next(&gsi))
             ++n_stmts;
     }
@@ -134,21 +134,6 @@ static unsigned int nopper_exec(void)
 }
 
 
-/* See tree-pass.h for a list and descriptions for the fields of this struct */
-static struct gimple_opt_pass nopper_pass = 
-{
-    .pass.type = GIMPLE_PASS,
-    .pass.name = "nopper", /* For use in the dump file */
-
-    /* Predicate (boolean) function that gets executed before your pass.  If the
-     * return value is 'true' your pass gets executed, otherwise, the pass is
-     * skipped.
-     */
-    .pass.gate = nopper_gate,
-    .pass.execute = nopper_exec, /* Your pass handler/callback */
-};
-
-
 /* Return 0 on success or error code on failure */
 int plugin_init(struct plugin_name_args   *info,  /* Argument info  */
                 struct plugin_gcc_version *ver)   /* Version of GCC */
@@ -166,6 +151,19 @@ int plugin_init(struct plugin_name_args   *info,  /* Argument info  */
      */
      if (strncmp(ver->basever, nopper_ver.basever, strlen("4.6")))
        return -1; /* Incorrect version of gcc */
+
+
+     /* See tree-pass.h for a list and descriptions for the fields of this struct */
+    static struct gimple_opt_pass nopper_pass;
+    nopper_pass.pass.type = GIMPLE_PASS,
+    nopper_pass.pass.name = "nopper", /* For use in the dump file */
+
+    /* Predicate (boolean) function that gets executed before your pass.  If the
+     * return value is 'true' your pass gets executed, otherwise, the pass is
+     * skipped.
+     */
+    nopper_pass.pass.gate = nopper_gate,
+    nopper_pass.pass.execute = nopper_exec, /* Your pass handler/callback */
 
     /* Setup the info to register with gcc telling when we want to be called and
      * to what gcc should call, when it's time to be called.
