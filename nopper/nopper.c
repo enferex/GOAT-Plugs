@@ -5,7 +5,7 @@
  * 
  * Nopper plugin - Example GCC plugin to insert no-ops into a program.
  *
- * Copyright (C) 2011 Matt Davis (enferex) of 757Labs
+ * Copyright (C) 2011,2015 Matt Davis (enferex) of 757Labs
  * (www.757Labs.org)
  *
  * nopper.c is part of the GOAT-Plugs GCC plugin set.
