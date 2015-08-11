@@ -133,7 +133,6 @@ static tree get_str_cst(tree node)
     tree str;
 
     str = node;
-      debug_tree(str);
 
     /* Filter out types we are ignoring */
     if (TREE_CODE(node) == VAR_DECL)
