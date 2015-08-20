@@ -154,7 +154,7 @@ static tree get_str_cst(tree node)
     if (!TYPE_READONLY(str) && (TREE_CODE(str) != ARRAY_REF))
       return NULL_TREE;
    
-    if (TREE_CODE(str) != STRING_CST) 
+    if (TREE_OPERAND_LENGTH(str) > 0 && TREE_CODE(str) != STRING_CST)
       str = TREE_OPERAND(str, 0);
 
     if (TREE_CODE(str) != STRING_CST)
