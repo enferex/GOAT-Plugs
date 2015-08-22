@@ -24,12 +24,19 @@
  *****************************************************************************/
 
 #include <stdio.h>
-#include <coretypes.h>
 #include <gcc-plugin.h>
-#include <gimple.h>
+#include <coretypes.h>
 #include <tree.h>
-#include <tree-flow.h>
 #include <tree-pass.h>
+#include <tree-ssa-alias.h>
+#include <basic-block.h>
+#include <cgraph.h>
+#include <function.h>
+#include <internal-fn.h>
+#include <is-a.h>
+#include <gimple-expr.h>
+#include <gimple.h>
+#include <gimple-iterator.h>
 
 
 /* Required for the plugin to work */
@@ -39,7 +46,7 @@ int plugin_is_GPL_compatible = 1;
 /* Help info about the plugin if one were to use gcc's --version --help */
 static struct plugin_info nopper_info =
 {
-    .version = "0.2",
+    .version = "0.3",
     .help = "Inserts user-defined amount of nop instructions throughout the "
             ".text section of the binary.\n"
             "-fplugin-arg-nopper-numnops=<value>\n"
@@ -50,15 +57,8 @@ static struct plugin_info nopper_info =
 /* How we test to ensure the gcc version will work with our plugin */
 static struct plugin_gcc_version nopper_ver =
 {
-    .basever = "4.8",
+    .basever = "4.9",
 };
-
-
-/* We don't need to run any tests before we execute our plugin pass */
-static bool nopper_gate(void)
-{
-    return true;
-}
 
 
 /* Insert a nop instruction before this statement */
@@ -86,7 +86,8 @@ static int count_stmts(void)
      */
     FOR_EACH_FUNCTION(node)
     {
-        if (!(func = DECL_STRUCT_FUNCTION(node->symbol.decl)))
+        symtab_node *n = node;
+        if (!(func = DECL_STRUCT_FUNCTION(n->decl)))
           continue;
 
         FOR_EACH_BB_FN(bb, func)
@@ -125,13 +126,38 @@ static unsigned int nopper_exec(void)
                n_nops, counted_stmts);
     }
 
-    FOR_EACH_BB(bb)
+    FOR_EACH_BB_FN(bb, cfun)
       for (gsi=gsi_start_bb(bb); !gsi_end_p(gsi); gsi_next(&gsi))
         for (i=0; i<nops_per_stmt; ++i)
           insert_nop(gsi);
     
     return 0;
 }
+
+
+namespace{
+const pass_data pass_data_nopper =
+{
+    GIMPLE_PASS, /* Type           */
+    "nopper",    /* Name           */
+    0,           /* opt-info flags */
+    false,       /* Has gate       */
+    true,        /* Has exec       */
+    TV_NONE,     /* Time var id    */
+    0,           /* Prop. required */
+    0,           /* Prop. provided */
+    0,           /* Prop destroyed */
+    0,           /* Flags start    */
+    0            /* Flags finish   */
+};
+
+class pass_nopper : public gimple_opt_pass
+{
+public:
+    pass_nopper() : gimple_opt_pass(pass_data_nopper, NULL) {;}
+    unsigned int execute() { return nopper_exec(); }
+};
+} /* Anonymous namespace */
 
 
 /* Return 0 on success or error code on failure */
@@ -149,26 +175,13 @@ int plugin_init(struct plugin_name_args   *info,  /* Argument info  */
      * we will skip that.  Instead, as mentioned it can be more useful if we
      * validate the version information ourselves
      */
-     if (strncmp(ver->basever, nopper_ver.basever, strlen("4.6")))
+     if (strncmp(ver->basever, nopper_ver.basever, strlen("4.9")))
        return -1; /* Incorrect version of gcc */
-
-
-     /* See tree-pass.h for a list and descriptions for the fields of this struct */
-    static struct gimple_opt_pass nopper_pass;
-    nopper_pass.pass.type = GIMPLE_PASS,
-    nopper_pass.pass.name = "nopper", /* For use in the dump file */
-
-    /* Predicate (boolean) function that gets executed before your pass.  If the
-     * return value is 'true' your pass gets executed, otherwise, the pass is
-     * skipped.
-     */
-    nopper_pass.pass.gate = nopper_gate,
-    nopper_pass.pass.execute = nopper_exec, /* Your pass handler/callback */
 
     /* Setup the info to register with gcc telling when we want to be called and
      * to what gcc should call, when it's time to be called.
      */
-    pass.pass = &nopper_pass.pass;
+    pass.pass = new pass_nopper();
 
     /* Get called after gcc has produced the SSA representation of the program.
      * After the first SSA pass.
