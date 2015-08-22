@@ -72,13 +72,19 @@
 #include <gcc-plugin.h>
 #include <coretypes.h>
 #include <tree.h>
-#include <tree-flow.h>
 #include <tree-pass.h>
+#include <tree-ssa-alias.h>
 #include <function.h>
 #include <cgraph.h>
+#include <internal-fn.h>
+#include <stringpool.h>
+#include <gimple-expr.h>
 #include <gimple.h>
+#include <gimple-iterator.h>
+#include <gimple-ssa.h>
 #include <vec.h>
 #include <diagnostic.h>
+#include <tree-ssanames.h>
 
 
 /* Store all readonlys we encounter */
@@ -93,13 +99,6 @@ vec<encdec_t> readonlyz = vNULL;
 
 /* Required for the plugin to work */
 int plugin_is_GPL_compatible = 1;
-
-
-/* We don't need to run any tests before we execute our plugin pass */
-static bool munger_gate(void)
-{
-    return true;
-}
 
 
 /* Initial global data we use to insert function calls to our built-in function,
@@ -303,7 +302,7 @@ static unsigned int munger_exec(void)
 
     init_builtins();
 
-    FOR_EACH_BB(bb)
+    FOR_EACH_BB_FN(bb, cfun)
       for (gsi=gsi_start_bb(bb); !gsi_end_p(gsi); gsi_next(&gsi))
         process_readonlys(gsi_stmt(gsi));
 
@@ -315,17 +314,41 @@ static unsigned int munger_exec(void)
 }
 
 
-/* Permit only gcc version 4.8 */
+/* Permit only gcc version 4.9 */
 static inline bool munger_version_check(const struct plugin_gcc_version *ver)
 {
-    if ((strncmp(ver->basever, "4.8", strlen("4.8")) == 0))
+    if ((strncmp(ver->basever, "4.9", strlen("4.9")) == 0))
       return true;
 
     error("[GOAT-Plugs] The munger plugin is not supported for this version of "
-          "the compiler, try a 4.8.x series");
+          "the compiler, try a 4.9.x series");
 
     return false;
 }
+
+namespace {
+const pass_data pass_data_munger =
+{
+    GIMPLE_PASS, /* Type           */
+    "munger",    /* Name           */
+    0,           /* opt-info flags */
+    false,       /* Has gate       */
+    true,        /* Has exec       */
+    TV_NONE,     /* Time var id    */
+    0,           /* Prop. required */
+    0,           /* Prop. provided */
+    0,           /* Prop destroyed */
+    0,           /* Flags start    */
+    TODO_update_ssa | TODO_verify_ssa | TODO_cleanup_cfg /* Flags finish */
+};
+
+class pass_munger : public gimple_opt_pass
+{
+public:
+    pass_munger() : gimple_opt_pass(pass_data_munger, NULL) {;}
+    unsigned int execute() { return munger_exec(); }
+};
+} // Anonymous namespace
 
 
 /* Return 0 on success or error code on failure */
@@ -334,29 +357,22 @@ int plugin_init(struct plugin_name_args   *info,  /* Argument info  */
 {
     struct register_pass_info pass;
     static struct plugin_info munger_info;
-    static struct gimple_opt_pass munger_pass;
 
     /* Version info */
-    munger_info.version = "0.3";
+    munger_info.version = "0.4";
     munger_info.help = "Encodes readonly constant string data at compile "
-                       "time.   The string is then decoded automatically "
+                       "time.  The string is then decoded automatically "
                        "at runtime.";
 
     if (!munger_version_check(ver))
       return -1; /* Incorrect version of gcc */
 
     /* Initalize the GIMPLE pass info */
-    memset(&munger_pass, 0, sizeof(munger_pass));
-    munger_pass.pass.type = GIMPLE_PASS,
-    munger_pass.pass.name = "munger", /* For use in the dump file          */
-    munger_pass.pass.gate = munger_gate,
-    munger_pass.pass.execute = munger_exec, /* Your pass handler/callback */
-    munger_pass.pass.todo_flags_finish = TODO_update_ssa|TODO_verify_ssa|TODO_cleanup_cfg,
 
     /* Get called after gcc has produced the SSA representation of the program.
      * After the first SSA pass.
      */
-    pass.pass = &munger_pass.pass;
+    pass.pass = new pass_munger();
     pass.reference_pass_name = "ssa";
     pass.ref_pass_instance_number = 1;
     pass.pos_op = PASS_POS_INSERT_AFTER;
