@@ -37,16 +37,25 @@
 #include <gimple-expr.h>
 #include <gimple.h>
 #include <gimple-iterator.h>
+#include <plugin.h>
+#include <vec.h>
 
 
 /* Required for the plugin to work */
 int plugin_is_GPL_compatible = 1;
 
 
+/* Global vect of functions to ignore (i.e., not insert nops into)
+ * A function can be ignored by using the function attribute:
+ * "__attribute__((nopper))" on the function declaration.
+ */
+vec<tree> ignorez = vNULL;
+
+
 /* Help info about the plugin if one were to use gcc's --version --help */
 static struct plugin_info nopper_info =
 {
-    .version = "0.3",
+    .version = "0.4",
     .help = "Inserts user-defined amount of nop instructions throughout the "
             ".text section of the binary.\n"
             "-fplugin-arg-nopper-numnops=<value>\n"
@@ -70,6 +79,20 @@ static void insert_nop(gimple_stmt_iterator gsi)
 }
 
 
+/* Returns true if this function has been ignored */
+static bool ignore_fn(tree decl)
+{
+    tree fn;
+    unsigned ii;
+
+    FOR_EACH_VEC_ELT(ignorez, ii, fn)
+      if (fn == decl)
+          return true;
+
+    return false;
+}
+
+
 /* Count the number of stmts in this program */
 static int count_stmts(void)
 {
@@ -87,6 +110,10 @@ static int count_stmts(void)
     FOR_EACH_FUNCTION(node)
     {
         symtab_node *n = node;
+
+        if (ignore_fn(n->decl))
+          continue;
+
         if (!(func = DECL_STRUCT_FUNCTION(n->decl)))
           continue;
 
@@ -107,11 +134,12 @@ static int n_nops; /* Global value for the number of nops to insert */
 static unsigned int nopper_exec(void)
 {
     int i;
-    static int nops_per_stmt = 0;
-    static int counted_stmts = 0;
     basic_block bb;
     gimple_stmt_iterator gsi;
+    static int nops_per_stmt = 0;
+    static int counted_stmts = 0;
 
+    /* Only initialized once */
     if (!counted_stmts)
     {
         if (!(counted_stmts = count_stmts()))
@@ -126,12 +154,45 @@ static unsigned int nopper_exec(void)
                n_nops, counted_stmts);
     }
 
-    FOR_EACH_BB_FN(bb, cfun)
+    if (ignore_fn(current_function_decl)) 
+      return 0;;
+
+    /* Get nopping! */
+    FOR_EACH_BB_FN(bb, cfun) 
       for (gsi=gsi_start_bb(bb); !gsi_end_p(gsi); gsi_next(&gsi))
         for (i=0; i<nops_per_stmt; ++i)
           insert_nop(gsi);
     
     return 0;
+}
+
+
+static tree handle_ignore_attr(
+    tree *node,
+    tree  name,
+    tree  args,
+    int   flags, 
+    bool *no_add_attrs)
+{
+    ignorez.safe_push(*node);
+    return NULL_TREE;
+}
+
+
+/* Attribute __nopper-ignore__ only for functions */
+static const struct attribute_spec ignore_attr = 
+{
+    "nopper",
+     0, 0, 
+     true, false, false, 
+     handle_ignore_attr,
+     false
+};
+
+
+static void nopper_register_attrs(void *event_data, void *data)
+{
+    register_attribute(&ignore_attr);
 }
 
 
@@ -150,6 +211,7 @@ const pass_data pass_data_nopper =
     0,           /* Flags start    */
     0            /* Flags finish   */
 };
+
 
 class pass_nopper : public gimple_opt_pass
 {
@@ -189,6 +251,9 @@ int plugin_init(struct plugin_name_args   *info,  /* Argument info  */
     pass.reference_pass_name = "ssa";
     pass.ref_pass_instance_number = 1;
     pass.pos_op = PASS_POS_INSERT_AFTER;
+
+    /* Register our attribute */
+    register_callback("nopper", PLUGIN_ATTRIBUTES, nopper_register_attrs, NULL);
 
     /* Tell gcc we want to be called after the first SSA pass */
     register_callback("nopper", PLUGIN_PASS_MANAGER_SETUP, NULL, &pass);

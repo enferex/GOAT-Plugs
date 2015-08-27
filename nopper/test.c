@@ -1,7 +1,9 @@
 #include <stdio.h>
 
 
-static void fn(int n)
+void fn(int) __attribute__((nopper));
+
+void fn(int n)
 {
     int i;
 
