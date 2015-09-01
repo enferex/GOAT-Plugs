@@ -5,7 +5,7 @@
  * 
  * JPanic plugin - Inserts junk instructions and functions throughout a program.
  *
- * Copyright (C) 2011 Matt Davis (enferex) of 757Labs
+ * Copyright (C) 2011,2015 Matt Davis (enferex) of 757Labs
  * (www.757Labs.org)
  *
  * Special thanks to JPanic for schooling me on ideas and junk instructions
@@ -26,15 +26,22 @@
  *****************************************************************************/
 
 #include <stdio.h>
-#include <coretypes.h>
 #include <gcc-plugin.h>
-#include <gimple.h>
+#include <coretypes.h>
 #include <tree.h>
-#include <tree-flow.h>
-#include <tree-iterator.h>
 #include <tree-pass.h>
-#include <basic-block.h>
+#include <tree-ssa-alias.h>
+#include <function.h>
+#include <cgraph.h>
+#include <internal-fn.h>
+#include <stringpool.h>
+#include <gimple-expr.h>
+#include <gimple.h>
+#include <gimple-iterator.h>
+#include <gimple-ssa.h>
+#include <gimplify.h>
 #include <vec.h>
+#include <tree-ssanames.h>
 #include <time.h>
 
 
@@ -43,13 +50,13 @@ int plugin_is_GPL_compatible = 1;
 
 
 /* Max junk statements to toss out throughout the program */
-int max_junk;
+static int max_junk;
 
 
 /* Help info about the plugin if one were to use gcc's --version --help */
 static struct plugin_info jpanic_info =
 {
-    .version = "0.1",
+    .version = "0.2",
     .help = "Inserts junk instructions and dummy functions throughout the "
             "program.\n"
             "The chance to insert junk occurs per each statement in the "
@@ -63,15 +70,8 @@ static struct plugin_info jpanic_info =
 /* How we test to ensure the gcc version will work with our plugin */
 static struct plugin_gcc_version jpanic_ver =
 {
-    .basever = "4.6",
+    .basever = "4.9",
 };
-
-
-/* We don't need to run any tests before we execute our plugin pass */
-static bool jpanic_gate(void)
-{
-    return true;
-}
 
 
 typedef enum 
@@ -87,7 +87,7 @@ typedef enum
 
 
 /* Global vector of junk function decl nodes */
-VEC(tree,gc) *junk_fns;
+vec<tree> junk_fns;
 
 
 /* Global variable we set the left-hand-side of junk statements assign to.
@@ -186,11 +186,12 @@ static tree create_junk_fn(void)
 
     /* Update */
     cgraph_add_new_function(decl, false);
-    cgraph_mark_needed_node(cgraph_node(decl));
     pop_cfun();
 
     /* Add to a vec of all junk funs we maintain */
-    VEC_safe_push(tree, gc, junk_fns, decl);
+    junk_fns.safe_push(decl);
+
+    printf("Created unkfn\n");
 
     return decl;
 }
@@ -198,27 +199,27 @@ static tree create_junk_fn(void)
 
 static tree find_junk_fn(void)
 {
-    unsigned len = VEC_length(tree, junk_fns);
+    unsigned len = junk_fns.length();
 
     /* No junk functions added yet... heck, add one */
     if (len == 0)
       return create_junk_fn();
 
-    return VEC_index(tree, junk_fns, rand() % len);
+    return junk_fns[rand() % len];
 }
 
 
-/* Returns '1' if the function 'decl' is one we have added */
-static int is_junk_fn(tree decl)
+/* Returns 'true' if the function 'decl' is one we have added */
+static bool is_junk_fn(tree decl)
 {
     unsigned i;
     tree junk;
 
-    FOR_EACH_VEC_ELT(tree, junk_fns, i, junk)
+    FOR_EACH_VEC_ELT(junk_fns, i, junk)
       if (junk == decl)
-        return 1;
+        return true;
 
-    return 0;
+    return false;
 }
 
 
@@ -286,14 +287,13 @@ static unsigned int jpanic_exec(void)
     if (!initted)
     {
         init_jpanic_global();
-        junk_fns = VEC_alloc(tree, gc, 0);
         initted = true;
     }
 
     /* For each basic block ... for each statement ... if rand is true insert
      * junk before the statement
      */
-    FOR_EACH_BB(bb)
+    FOR_EACH_BB_FN(bb, cfun)
       for (gsi=gsi_start_bb(bb); !gsi_end_p(gsi); gsi_next(&gsi))
         if ((max_junk > 0) && (rand() % 2 && max_junk))
         {
@@ -321,31 +321,47 @@ static unsigned int jpanic_exec(void)
 }
 
 
-/* See tree-pass.h for a list and descriptions for the fields of this struct */
-static struct gimple_opt_pass jpanic_pass = 
+namespace{
+const pass_data pass_data_jpanic =
 {
-    .pass.type = GIMPLE_PASS,
-    .pass.name = "jpanic",
-    .pass.gate = jpanic_gate,
-    .pass.execute = jpanic_exec, /* Your pass handler/callback */
+    GIMPLE_PASS, /* Type           */
+    "jpanic",    /* Name           */
+    0,           /* opt-info flags */
+    false,       /* Has gate       */
+    true,        /* Has exec       */
+    TV_NONE,     /* Time var id    */
+    0,           /* Prop. required */
+    0,           /* Prop. provided */
+    0,           /* Prop destroyed */
+    0,           /* Flags start    */
+    0            /* Flags finish   */
 };
+
+
+class pass_jpanic : public gimple_opt_pass
+{
+public:
+    pass_jpanic() : gimple_opt_pass(pass_data_jpanic, NULL) {;}
+    unsigned int execute() { return jpanic_exec(); }
+};
+} /* Anonymous namespace */
 
 
 /* Return 0 on success or error code on failure */
 int plugin_init(struct plugin_name_args   *info,  /* Argument info  */
                 struct plugin_gcc_version *ver)   /* Version of GCC */
 {
-    unsigned i;
+    int i;
     struct register_pass_info pass;
 
     /* Check version */
-    if (strncmp(ver->basever, jpanic_ver.basever, strlen("4.6")))
+    if (strncmp(ver->basever, jpanic_ver.basever, strlen("4.9")))
       return -1;
 
     /* Setup the info to register with gcc telling when we want to be called and
      * to what gcc should call, when it's time to be called.
      */
-    pass.pass = &jpanic_pass.pass;
+    pass.pass = new pass_jpanic();
     pass.reference_pass_name = "ssa";
     pass.ref_pass_instance_number = 1;
     pass.pos_op = PASS_POS_INSERT_AFTER;
