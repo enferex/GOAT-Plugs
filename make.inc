@@ -4,7 +4,6 @@
 CC=g++
 ##############################################################################
 
-
 CCPLUGINS_DIR = $(shell $(CC) -print-file-name=plugin)
 CFLAGS += -I$(CCPLUGINS_DIR)/include -fPIC -g3 -O0 \
           -Wall $(EXTRA_CFLAGS) -fno-rtti
@@ -12,7 +11,7 @@ CFLAGS += -I$(CCPLUGINS_DIR)/include -fPIC -g3 -O0 \
 $(PLUGIN): $(PLUGIN_OBJECT_FILES)
 	$(CC) -g -shared $^ -o $@ $(CFLAGS)
                     
-test: clean $(PLUGIN) test.c
+test: clean $(PLUGIN) $(EXTRA_OBJS) test.c
 	$(CC) test.c -o $@ -fplugin=./$(PLUGIN) \
         -g3 -O0 $(EXTRA_OBJS) $(EXTRA_ARGS)
 
