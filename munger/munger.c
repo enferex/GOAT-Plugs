@@ -5,7 +5,7 @@
  * 
  * Munger plugin - Simple readonly data obfuscation.
  *
- * Copyright (C) 2011, 2012, 2015 Matt Davis (enferex) of 757Labs
+ * Copyright (C) 2011, 2012, 2015, 2023 Matt Davis (enferex) of 757Labs
  * (www.757Labs.org)
  *
  * munger.c is part of the GOAT-Plugs GCC plugin set.
@@ -73,6 +73,7 @@
 #include <coretypes.h>
 #include <tree.h>
 #include <tree-pass.h>
+#include <value-range.h>
 #include <tree-ssa-alias.h>
 #include <function.h>
 #include <cgraph.h>
@@ -180,7 +181,7 @@ static tree add_unique(tree node)
     DECL_NAME(dec_node) = create_tmp_var_name("MUNGER_GLOBAL");
     DECL_ARTIFICIAL(dec_node) = 1;
     TREE_STATIC(dec_node) = 1;
-    varpool_finalize_decl(dec_node);
+    varpool_node().finalize_decl(dec_node);
 
     /* Remember the node */
     ed = (encdec_t)xmalloc(sizeof(struct _encdec_d));
@@ -196,20 +197,20 @@ static tree add_unique(tree node)
  * Returns the lhs variable this function creates (decoded data).
  * This also sets the global
  */
-static tree insert_decode_bn(gimple stmt, tree lhs, tree arg)
+static tree insert_decode_bn(gimple *stmt, tree lhs, tree arg)
 {
     unsigned ii;
-    gimple call;
     gimple_stmt_iterator gsi;
     encdec_t ed;
     tree str, size_node;
+    assert(stmt);
 
     /* Build a node to hold the size */
     str = get_str_cst(arg);
     size_node = build_int_cstu(uint32_type_node, TREE_STRING_LENGTH(str));
 
     /* Build the call DECODED = __decode() */
-    call = gimple_build_call(test_decode_fndecl, 3, lhs, arg, size_node);;
+    gcall *call = gimple_build_call(test_decode_fndecl, 3, lhs, arg, size_node);
 
     /* Insert the code for the 'DECODED = __decode();' statement */
     gsi = gsi_for_stmt(stmt);
@@ -246,12 +247,12 @@ static void encode(tree node)
 
 
 /* Locate read only string constants */
-static void process_readonlys(gimple stmt)
+static void process_readonlys(gimple *stmt)
 {
     unsigned i;
-    gimple assign_global;
     gimple_stmt_iterator gsi;
     tree op, decoded_op, orig, decoded_var, lhs;
+    assert(stmt);
 
     /* For each operand in stmt */
     for (i=0; i<gimple_num_ops(stmt); ++i)
@@ -279,7 +280,7 @@ static void process_readonlys(gimple stmt)
         decoded_var = make_ssa_name(decoded_var, stmt);
 
         /* Assign the global to the ssa name instance */
-        assign_global = gimple_build_assign_stat(decoded_var, decoded_op);
+        gassign *assign_global = gimple_build_assign(decoded_var, decoded_op);
         gsi = gsi_for_stmt(stmt);
         gsi_insert_before(&gsi, assign_global, GSI_NEW_STMT);
 
@@ -320,7 +321,7 @@ static inline bool munger_version_check(const struct plugin_gcc_version *ver)
     if ((strncmp(ver->basever, "4.9", strlen("4.9")) == 0))
       return true;
 
-    error("[GOAT-Plugs] The munger plugin is not supported for this version of "
+    error("GOAT-Plugs: The munger plugin is not supported for this version of "
           "the compiler, try a 4.9.x series");
 
     return false;
@@ -331,15 +332,13 @@ const pass_data pass_data_munger =
 {
     GIMPLE_PASS, /* Type           */
     "munger",    /* Name           */
-    0,           /* opt-info flags */
-    false,       /* Has gate       */
-    true,        /* Has exec       */
+    OPTGROUP_NONE,           /* opt-info flags */
     TV_NONE,     /* Time var id    */
     0,           /* Prop. required */
     0,           /* Prop. provided */
     0,           /* Prop destroyed */
     0,           /* Flags start    */
-    TODO_update_ssa | TODO_verify_ssa | TODO_cleanup_cfg /* Flags finish */
+    TODO_update_ssa | TODO_verify_all | TODO_cleanup_cfg /* Flags finish */
 };
 
 class pass_munger : public gimple_opt_pass
